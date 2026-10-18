@@ -1,0 +1,359 @@
+{
+  "dataset": "25 hand-labeled synthetic merchant cases; 30 seeded synthetic forecast holdouts",
+  "categorization": {
+    "correct": 20,
+    "total": 25,
+    "accuracy": 0.8,
+    "predictions": [
+      {
+        "merchant": "Swiggy order 117",
+        "expected": "food_delivery",
+        "predicted": "food_delivery"
+      },
+      {
+        "merchant": "ZOMATO dinner",
+        "expected": "food_delivery",
+        "predicted": "food_delivery"
+      },
+      {
+        "merchant": "DoorDash",
+        "expected": "food_delivery",
+        "predicted": "food_delivery"
+      },
+      {
+        "merchant": "UberEats",
+        "expected": "food_delivery",
+        "predicted": "food_delivery"
+      },
+      {
+        "merchant": "Apartment rent",
+        "expected": "housing",
+        "predicted": "housing"
+      },
+      {
+        "merchant": "Mortgage payment",
+        "expected": "housing",
+        "predicted": "housing"
+      },
+      {
+        "merchant": "BigBasket",
+        "expected": "groceries",
+        "predicted": "groceries"
+      },
+      {
+        "merchant": "Local grocery",
+        "expected": "groceries",
+        "predicted": "groceries"
+      },
+      {
+        "merchant": "Supermarket",
+        "expected": "groceries",
+        "predicted": "groceries"
+      },
+      {
+        "merchant": "Netflix",
+        "expected": "subscriptions",
+        "predicted": "subscriptions"
+      },
+      {
+        "merchant": "Spotify premium",
+        "expected": "subscriptions",
+        "predicted": "subscriptions"
+      },
+      {
+        "merchant": "Cloud subscription",
+        "expected": "subscriptions",
+        "predicted": "subscriptions"
+      },
+      {
+        "merchant": "Uber trip",
+        "expected": "transport",
+        "predicted": "transport"
+      },
+      {
+        "merchant": "Metro pass",
+        "expected": "transport",
+        "predicted": "transport"
+      },
+      {
+        "merchant": "Petrol station",
+        "expected": "transport",
+        "predicted": "transport"
+      },
+      {
+        "merchant": "Amazon order",
+        "expected": "shopping",
+        "predicted": "shopping"
+      },
+      {
+        "merchant": "Flipkart",
+        "expected": "shopping",
+        "predicted": "shopping"
+      },
+      {
+        "merchant": "Salary",
+        "expected": "income",
+        "predicted": "income"
+      },
+      {
+        "merchant": "Freelance invoice",
+        "expected": "income",
+        "predicted": "income"
+      },
+      {
+        "merchant": "Unknown merchant",
+        "expected": "other",
+        "predicted": "other"
+      },
+      {
+        "merchant": "Cafe Mocha",
+        "expected": "food_delivery",
+        "predicted": "other"
+      },
+      {
+        "merchant": "Fresh Mart",
+        "expected": "groceries",
+        "predicted": "other"
+      },
+      {
+        "merchant": "YouTube Premium",
+        "expected": "subscriptions",
+        "predicted": "other"
+      },
+      {
+        "merchant": "Ola ride",
+        "expected": "transport",
+        "predicted": "other"
+      },
+      {
+        "merchant": "Amazon refund",
+        "expected": "shopping",
+        "predicted": "income"
+      }
+    ]
+  },
+  "forecast": {
+    "horizon_days": 30,
+    "train_days": 90,
+    "holdout_windows": 30,
+    "mae_inr": 5277.48,
+    "mae_by_profile": {
+      "stable": 0.0,
+      "variable": 897.17,
+      "spending_shift": 14935.26
+    },
+    "windows": [
+      {
+        "profile": "stable",
+        "trial": 0,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 1,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 2,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 3,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 4,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 5,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 6,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 7,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 8,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "stable",
+        "trial": 9,
+        "predicted": 78000.0,
+        "actual": 78000,
+        "absolute_error": 0.0
+      },
+      {
+        "profile": "variable",
+        "trial": 0,
+        "predicted": 78154.33,
+        "actual": 76448,
+        "absolute_error": 1706.33
+      },
+      {
+        "profile": "variable",
+        "trial": 1,
+        "predicted": 78695.0,
+        "actual": 79565,
+        "absolute_error": 870.0
+      },
+      {
+        "profile": "variable",
+        "trial": 2,
+        "predicted": 78178.0,
+        "actual": 79176,
+        "absolute_error": 998.0
+      },
+      {
+        "profile": "variable",
+        "trial": 3,
+        "predicted": 78395.33,
+        "actual": 78227,
+        "absolute_error": 168.33
+      },
+      {
+        "profile": "variable",
+        "trial": 4,
+        "predicted": 78387.67,
+        "actual": 78162,
+        "absolute_error": 225.67
+      },
+      {
+        "profile": "variable",
+        "trial": 5,
+        "predicted": 78209.67,
+        "actual": 79159,
+        "absolute_error": 949.33
+      },
+      {
+        "profile": "variable",
+        "trial": 6,
+        "predicted": 77570.33,
+        "actual": 78889,
+        "absolute_error": 1318.67
+      },
+      {
+        "profile": "variable",
+        "trial": 7,
+        "predicted": 78660.0,
+        "actual": 77817,
+        "absolute_error": 843.0
+      },
+      {
+        "profile": "variable",
+        "trial": 8,
+        "predicted": 77721.0,
+        "actual": 77961,
+        "absolute_error": 240.0
+      },
+      {
+        "profile": "variable",
+        "trial": 9,
+        "predicted": 78138.67,
+        "actual": 79791,
+        "absolute_error": 1652.33
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 0,
+        "predicted": 77404.33,
+        "actual": 63908,
+        "absolute_error": 13496.33
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 1,
+        "predicted": 77599.0,
+        "actual": 63943,
+        "absolute_error": 13656.0
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 2,
+        "predicted": 76878.0,
+        "actual": 62250,
+        "absolute_error": 14628.0
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 3,
+        "predicted": 79037.33,
+        "actual": 62854,
+        "absolute_error": 16183.33
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 4,
+        "predicted": 78208.33,
+        "actual": 62142,
+        "absolute_error": 16066.33
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 5,
+        "predicted": 78122.67,
+        "actual": 61798,
+        "absolute_error": 16324.67
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 6,
+        "predicted": 78074.33,
+        "actual": 62815,
+        "absolute_error": 15259.33
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 7,
+        "predicted": 78415.33,
+        "actual": 63051,
+        "absolute_error": 15364.33
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 8,
+        "predicted": 77774.0,
+        "actual": 63554,
+        "absolute_error": 14220.0
+      },
+      {
+        "profile": "spending_shift",
+        "trial": 9,
+        "predicted": 78037.33,
+        "actual": 63883,
+        "absolute_error": 14154.33
+      }
+    ]
+  },
+  "limitations": "Synthetic, small, developer-authored evaluation. Not a real-world benchmark. Forecast cannot predict unseen spending shifts. Positive refunds are currently treated as income. Live Mesh answer quality not evaluated."
+}
