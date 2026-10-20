@@ -1,0 +1,32 @@
+[
+  {
+    "file": "01_stable_budget.csv",
+    "balance": 45000,
+    "rows": 150,
+    "unique_rows": 150
+  },
+  {
+    "file": "02_overspending.csv",
+    "balance": 5000,
+    "rows": 159,
+    "unique_rows": 159
+  },
+  {
+    "file": "03_food_delivery_spike.csv",
+    "balance": 25000,
+    "rows": 150,
+    "unique_rows": 150
+  },
+  {
+    "file": "04_irregular_freelance_income.csv",
+    "balance": 15000,
+    "rows": 153,
+    "unique_rows": 153
+  },
+  {
+    "file": "05_duplicate_import.csv",
+    "balance": 10000,
+    "rows": 15,
+    "unique_rows": 10
+  }
+]

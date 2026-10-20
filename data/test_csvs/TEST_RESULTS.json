@@ -1,0 +1,64 @@
+[
+  {
+    "file": "01_stable_budget.csv",
+    "balance": 45000,
+    "rows": 150,
+    "unique_rows": 150,
+    "import_test": "passed",
+    "repeat_import_test": "passed",
+    "projected_balance": 75012.0,
+    "spending_alerts": [],
+    "purchase_25000": 50012.0
+  },
+  {
+    "file": "02_overspending.csv",
+    "balance": 5000,
+    "rows": 159,
+    "unique_rows": 159,
+    "import_test": "passed",
+    "repeat_import_test": "passed",
+    "projected_balance": -15488.0,
+    "spending_alerts": [],
+    "purchase_25000": -40488.0
+  },
+  {
+    "file": "03_food_delivery_spike.csv",
+    "balance": 25000,
+    "rows": 150,
+    "unique_rows": 150,
+    "import_test": "passed",
+    "repeat_import_test": "passed",
+    "projected_balance": 51912.0,
+    "spending_alerts": [
+      {
+        "category": "food_delivery",
+        "current": 6000.0,
+        "previous": 3000.0,
+        "increase_pct": 100.0
+      }
+    ],
+    "purchase_25000": 26912.0
+  },
+  {
+    "file": "04_irregular_freelance_income.csv",
+    "balance": 15000,
+    "rows": 153,
+    "unique_rows": 153,
+    "import_test": "passed",
+    "repeat_import_test": "passed",
+    "projected_balance": 18345.33,
+    "spending_alerts": [],
+    "purchase_25000": -6654.67
+  },
+  {
+    "file": "05_duplicate_import.csv",
+    "balance": 10000,
+    "rows": 15,
+    "unique_rows": 10,
+    "import_test": "passed",
+    "repeat_import_test": "passed",
+    "projected_balance": 6045.45,
+    "spending_alerts": [],
+    "purchase_25000": -18954.55
+  }
+]

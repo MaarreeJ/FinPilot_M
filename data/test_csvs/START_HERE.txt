@@ -1,0 +1,64 @@
+FinPilot synthetic CSV test pack
+Prepared for testing on 20 October 2026. All merchants and transactions are fictional.
+Currency: INR. Columns: date,merchant,amount. Negative amounts are expenses.
+
+HOW TO IMPORT
+1. In FinPilot, open Your money, connected > Import transactions > choose a CSV.
+2. Click Import CSV (not Try sample data).
+3. Enter the suggested current balance below and click Save.
+4. Try a purchase of 25000, 30 days from now, with a reserve of 10000.
+
+IMPORTANT
+Imports ADD to the current database. Do not import all profiles together if you
+want the isolated expected results below. Exact repeat rows are skipped.
+The built-in Try sample data button only works with an empty database.
+These files do not reset, delete, or replace any existing transactions.
+
+TO TEST EACH PROFILE SEPARATELY WITHOUT DELETING EXISTING DATA
+Open a VS Code terminal in the finpilot folder. Start a separate instance:
+FINPILOT_DB=sample-test-01.db .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8766
+Open http://127.0.0.1:8766 and import ONE CSV. To test another profile, stop this
+test server with Ctrl+C, change the database name to sample-test-02.db, and restart.
+Use a new database filename for each profile. Your original database stays intact.
+
+ISOLATED SCENARIOS
+
+01_stable_budget.csv
+Rows: 150; unique imports: 150.
+Set current balance: INR 45,000.00.
+Expected 30-day projected balance: INR 75,012.00.
+After INR 25,000 purchase: INR 50,012.00.
+
+02_overspending.csv
+Rows: 159; unique imports: 159.
+Set current balance: INR 5,000.00.
+Expected 30-day projected balance: INR -15,488.00.
+After INR 25,000 purchase: INR -40,488.00.
+
+03_food_delivery_spike.csv
+Rows: 150; unique imports: 150.
+Set current balance: INR 25,000.00.
+Expected 30-day projected balance: INR 51,912.00.
+After INR 25,000 purchase: INR 26,912.00.
+
+04_irregular_freelance_income.csv
+Rows: 153; unique imports: 153.
+Set current balance: INR 15,000.00.
+Expected 30-day projected balance: INR 18,345.33.
+After INR 25,000 purchase: INR -6,654.67.
+
+05_duplicate_import.csv
+Rows: 15; unique imports: 10.
+Set current balance: INR 10,000.00.
+Expected 30-day projected balance: INR 6,045.45.
+After INR 25,000 purchase: INR -18,954.55.
+
+01: steady salary and spending.
+02: expenses exceed income; triggers a negative-balance recommendation.
+03: recent 30-day food delivery doubles from 3000 to 6000 (100% increase).
+04: irregular freelance payments; demonstrates an averaged forecast's limitations.
+05: 15 rows with 10 unique transactions; first import skips 5, second skips all 15.
+
+Expected results assume an empty database, the stated balance, and 20 October 2026.
+The date windows and projections will change as time passes.
+Import, analysis and simulation tests do not require AI credits.
