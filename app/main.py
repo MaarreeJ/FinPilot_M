@@ -126,7 +126,7 @@ def home():
 
 @app.get('/health')
 def health():
-    return {'status': 'ok', 'mesh_configured': bool(os.getenv('MESH_API_KEY'))}
+    return {'status': 'ok', 'mesh_configured': bool(os.getenv('MESH_API_KEY', '').strip())}
 
 
 @app.get('/api/dashboard', dependencies=[Depends(authorize)])
@@ -193,7 +193,9 @@ def chat(body: Question):
     except ValueError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(502, 'Mesh request failed; check gateway availability, key and model.') from exc
+        if getattr(exc, 'status_code', None) == 402:
+            raise HTTPException(503, 'Mesh rejected this request with HTTP 402 (spending limit or credit restriction). Check your Mesh account limits or contact the hackathon organizer about sponsor credits. Sample-data analysis and simulations still work.') from exc
+        raise HTTPException(502, 'Mesh request failed; check API availability, key and model.') from exc
 
 
 @app.post('/api/digest', dependencies=[Depends(authorize)])

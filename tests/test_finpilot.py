@@ -9,6 +9,7 @@ from app.main import app
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv('FINPILOT_DB', str(tmp_path / 'test.db'))
     monkeypatch.delenv('MESH_API_KEY', raising=False)
+    monkeypatch.delenv('MESH_MODEL', raising=False)
     monkeypatch.delenv('FINPILOT_TOKEN', raising=False)
     with TestClient(app) as c:
         yield c
@@ -81,7 +82,25 @@ def test_mesh_routing_and_grounding(client, monkeypatch):
     monkeypatch.setattr(openai, 'OpenAI', FakeOpenAI)
     assert client.post('/api/chat', json={'question': 'Explain my patterns'}).json()['answer'] == 'Grounded answer'
     assert observed['base_url'] == 'https://api.meshapi.ai/v1'
+    assert observed['api_key'] == 'test-only-key'
+    assert observed['request']['model'] == 'openai/gpt-4o'
     assert 'evidence' in observed['request']['messages'][1]['content']
+    monkeypatch.setenv('MESH_MODEL', 'custom-test-model')
+    response = client.post('/api/chat', json={'question': 'Explain my patterns'})
+    assert response.json()['provider'] == 'Mesh API'
+    assert observed['request']['model'] == 'custom-test-model'
+
+
+def test_mesh_configuration_and_missing_key(client, monkeypatch):
+    monkeypatch.setenv('OPENAI_API_KEY', 'unused-direct-key')
+    assert client.get('/health').json()['mesh_configured'] is False
+    response = client.post('/api/chat', json={'question': 'What changed?'})
+    assert response.status_code == 503
+    assert 'MESH_API_KEY' in response.json()['detail']
+    monkeypatch.setenv('MESH_API_KEY', '   ')
+    assert client.get('/health').json()['mesh_configured'] is False
+    monkeypatch.setenv('MESH_API_KEY', 'test-only-key')
+    assert client.get('/health').json()['mesh_configured'] is True
 
 
 def test_scheduler_registered(client):
@@ -101,3 +120,16 @@ def test_savings_change_scenario_by_expected_amount(client):
 def test_stale_history_not_presented_as_current_forecast():
     result = Forecaster().run([{'date': '2020-01-01', 'amount': 10000}], 2000, date(2026, 10, 18))
     assert result['available'] is False
+
+
+def test_mesh_spending_limit_has_actionable_message(client, monkeypatch):
+    import httpx
+    import openai
+    def unavailable(*args):
+        response = httpx.Response(402, request=httpx.Request('POST', 'https://api.meshapi.ai/v1/chat/completions'))
+        raise openai.APIStatusError('Limit reached', response=response, body={'code': 'spend_limit_exceeded'})
+    monkeypatch.setattr('app.main.converse', unavailable)
+    response = client.post('/api/chat', json={'question': 'Explain my spending'})
+    assert response.status_code == 503
+    assert 'spending limit' in response.json()['detail']
+    assert 'sponsor credits' in response.json()['detail']

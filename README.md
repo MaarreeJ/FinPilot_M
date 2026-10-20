@@ -22,16 +22,16 @@ On Windows, activate with `.venv\Scripts\activate`.
 
 Open **http://127.0.0.1:8000**. Select **Try sample data** in an empty database for a complete synthetic demo. The demo sets a ₹45,000 current balance. For your own data, import a CSV and enter today's actual bank balance separately. Importing transactions does not change that balance.
 
-For live AI conversation, add your sponsor key to the local `.env`:
+For live AI conversation, add your Mesh key to the local `.env`:
 
 ```dotenv
 MESH_API_KEY=your_mesh_key_here
 MESH_MODEL=openai/gpt-4o
 ```
 
-The gateway is fixed in source to `https://api.meshapi.ai/v1`. No fallback to another AI provider exists. Missing credentials produce an explicit unavailable message; deterministic financial tools still work. The key stays on the backend. Do not paste secrets into the browser chat or commit `.env`.
+The API endpoint is fixed in source to `https://api.meshapi.ai/v1`. No fallback to another AI provider exists. Missing credentials produce an explicit unavailable message; deterministic financial tools still work. The key stays on the backend. Do not paste secrets into the browser chat or commit `.env`.
 
-The model identifier comes from the event brief; select a model available to your Mesh account. **Live Mesh availability and answer quality have not yet been verified with a real key.**
+Set MESH_MODEL to a model available to your Mesh account; the default is openai/gpt-4o. **Live check on 20 October 2026: Mesh returned HTTP 402 with spend_limit_exceeded; a successful completion remains unverified. The responsible account restriction has not been established; check with Mesh or the sponsor.**
 
 ## Tools used
 
@@ -138,7 +138,7 @@ python -m pytest -q
 python evaluation/run.py
 ```
 
-Latest local result: **9 tests passed**. Tests cover full demo flow, atomic CSV import, duplicate detection, input validation, authentication, time-window boundaries, stale-history handling, simulation arithmetic, scheduler registration, and Mesh-only routing using a mock client. A dependency deprecation warning remains in FastAPI's TestClient/httpx integration; tests pass.
+Latest local result: **11 tests passed**. Tests cover full demo flow, atomic CSV import, duplicate detection, input validation, authentication, time-window boundaries, stale-history handling, simulation arithmetic, scheduler registration, and Mesh routing using a mock client. A dependency deprecation warning remains in FastAPI's TestClient/httpx integration; tests pass.
 
 Measured synthetic evaluation, seed `20261018`:
 
@@ -190,3 +190,18 @@ Before handling multiple clients' financial data, add per-user authentication an
 - **23 October:** verify organizer checks and submit the repository URL.
 
 No open-source license is applied automatically; confirm the client's licensing preference before adding one.
+
+## Resume the demo on 21 October
+
+The local sample database `demo-rehearsal.db` is excluded from Git. Start from this project folder:
+
+```bash
+source .venv/bin/activate
+FINPILOT_DB=demo-rehearsal.db uvicorn app.main:app --host 127.0.0.1 --port 8766
+```
+
+Open http://127.0.0.1:8766 in your browser. If this is a fresh clone and the database is empty, click **Try sample data** once. Otherwise keep the existing samples. Do not overwrite your `.env`.
+
+Before recording, test the evidence view, purchase simulator, and saved brief. Live Mesh chat remains blocked by the provider's HTTP 402 response. Four organizer critical checks passed on the earlier published commit, but the organizer refused to record the result until an entry is submitted (HTTP 403). Neither result proves feature completeness.
+
+Record the demo, upload it to YouTube, supply the required LinkedIn and X participation post links, then submit the organizer form and re-run its workflow. A deployed URL is optional in the current submission form. Stronger agents/anomaly detection, payment-timing forecasts, persisted simulations and external scheduled delivery remain pending; do not describe them as completed.
