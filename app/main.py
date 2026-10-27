@@ -11,6 +11,7 @@ import sqlite3
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from .agents import Categorizer, Coordinator, converse, money
 
@@ -66,6 +67,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title='FinPilot', version='0.1.0', lifespan=lifespan)
+app.mount('/static', StaticFiles(directory=Path(__file__).parent / 'static'), name='static')
 
 
 def authorize(authorization: str = Header(default='')):
@@ -131,7 +133,7 @@ def health():
 
 @app.get('/api/dashboard', dependencies=[Depends(authorize)])
 def get_dashboard():
-    return save_digest()
+    return dashboard()
 
 
 @app.post('/api/balance', dependencies=[Depends(authorize)])

@@ -3,9 +3,9 @@ Prepared for testing on 20 October 2026. All merchants and transactions are fict
 Currency: INR. Columns: date,merchant,amount. Negative amounts are expenses.
 
 HOW TO IMPORT
-1. In FinPilot, open Your money, connected > Import transactions > choose a CSV.
+1. In FinPilot, open the Transactions tab > Import transactions > choose a CSV.
 2. Click Import CSV (not Try sample data).
-3. Enter the suggested current balance below and click Save.
+3. Enter the suggested current balance below and click Save balance.
 4. Try a purchase of 25000, 30 days from now, with a reserve of 10000.
 
 IMPORTANT

@@ -1,4 +1,6 @@
 from datetime import date, timedelta
+import json
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from app.agents import Analyzer, Categorizer, Forecaster
@@ -110,6 +112,23 @@ def test_scheduler_registered(client):
     assert len(client.get('/api/audit').json()) == 1
 
 
+def test_dashboard_reads_do_not_create_briefs(client):
+    assert client.get('/api/audit').json() == []
+    assert client.get('/api/dashboard').status_code == 200
+    assert client.get('/api/dashboard').status_code == 200
+    assert client.get('/api/audit').json() == []
+    assert client.post('/api/digest').status_code == 200
+    assert len(client.get('/api/audit').json()) == 1
+
+
+def test_tabbed_frontend_assets_served(client):
+    page = client.get('/')
+    assert page.status_code == 200
+    assert 'role="tablist"' in page.text
+    assert client.get('/static/app.js').status_code == 200
+    assert client.get('/static/styles.css').status_code == 200
+
+
 def test_savings_change_scenario_by_expected_amount(client):
     client.post('/api/demo')
     first = client.post('/api/simulate', json={'cost': 5000, 'days': 60}).json()
@@ -133,3 +152,50 @@ def test_mesh_spending_limit_has_actionable_message(client, monkeypatch):
     assert response.status_code == 503
     assert 'spending limit' in response.json()['detail']
     assert 'sponsor credits' in response.json()['detail']
+
+
+PACK = Path(__file__).resolve().parents[1] / 'data' / 'finpilot_csv_test_pack'
+
+
+@pytest.mark.parametrize('case', json.loads((PACK / 'TEST_RESULTS.json').read_text()),
+                         ids=lambda case: case['file'])
+def test_published_csv_scenarios(client, monkeypatch, case):
+    # These published expectations are anchored to 20 October, not the test run date.
+    class EvaluationDate(date):
+        @classmethod
+        def today(cls):
+            return cls(2026, 10, 20)
+    monkeypatch.setattr('app.main.date', EvaluationDate)
+    content = (PACK / case['file']).read_bytes()
+    first = client.post('/api/import', files={'file': (case['file'], content)})
+    assert first.status_code == 200
+    assert first.json()['imported'] == case['unique_rows']
+    assert first.json()['duplicates_skipped'] == case['rows'] - case['unique_rows']
+    repeat = client.post('/api/import', files={'file': (case['file'], content)}).json()
+    assert repeat == {'imported': 0, 'duplicates_skipped': case['rows']}
+    assert client.post('/api/balance', json={'balance': case['balance']}).status_code == 200
+    report = client.get('/api/dashboard').json()
+    assert report['forecast']['projected_balance'] == pytest.approx(case['projected_balance'])
+    assert report['analysis']['patterns'] == case['spending_alerts']
+    simulation = client.post('/api/simulate', json={'cost': 25000, 'reserve': 10000}).json()
+    assert simulation['after_purchase'] == pytest.approx(case['purchase_25000'])
+    client.post('/api/digest')
+    saved = client.get('/api/audit').json()[0]['report']
+    assert saved['transaction_ids'] == report['transaction_ids']
+    assert saved['recommendations'] == report['recommendations']
+
+
+def test_background_scheduler_saves_a_brief(client):
+    from datetime import datetime, timezone
+    from threading import Event
+    completed = Event()
+    scheduled_digest = app.state.scheduler.get_job('daily_digest').func
+
+    def run_digest():
+        scheduled_digest()
+        completed.set()
+
+    app.state.scheduler.add_job(run_digest, 'date',
+                                run_date=datetime.now(timezone.utc) + timedelta(milliseconds=100))
+    assert completed.wait(5), 'Scheduled digest did not complete'
+    assert len(client.get('/api/audit').json()) == 1
