@@ -190,7 +190,35 @@ function on(id,event,action){$(id).addEventListener(event,async e=>{e.preventDef
 on('balance-form','submit',async()=>{await api('balance',{balance:Number($('current-balance').value)});await refresh();notify('Current balance updated.')});
 on('upload','submit',async()=>{const form=new FormData();form.append('file',$('csv').files[0]);const result=await api('import',form);await refresh();notify(`${result.imported} transactions imported; ${result.duplicates_skipped} duplicates skipped.`)});
 on('manual','submit',async()=>{await api('transactions',{date:$('tx-date').value,merchant:$('merchant').value,amount:Number($('amount').value)});await refresh();notify('Transaction saved. Update your current balance separately if needed.')});
-on('scenario','submit',async()=>{const result=await api('simulate',{cost:Number($('cost').value),days:Number($('days').value),reserve:Number($('reserve').value),monthly_saving:Number($('saving').value)});$('simulation').className=result.affordable_under_model?'result':'result alert';$('simulation').textContent=`${result.affordable_under_model?'This purchase keeps you above your minimum balance in this estimate.':'Alert: this purchase would leave less than your minimum balance.'}\nEstimated balance before purchase: ${fmt(result.baseline)}\nAfter purchase: ${fmt(result.after_purchase)}\nMinimum balance to keep: ${fmt(result.reserve)}\n\n${result.assumptions}`});
+// Purchase planning: scenario metadata is stored with the same deterministic simulation.
+const planDate = $('purchase-date');
+function isoFuture(days) { const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+days); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); }
+planDate.min=isoFuture(1); planDate.max=isoFuture(365); planDate.value=isoFuture(Number($('days').value));
+function daysToPlan() { const today=new Date();today.setHours(12,0,0,0);const selected=new Date(planDate.value+'T12:00:00');return Math.round((selected-today)/86400000); }
+$('days').addEventListener('change',()=>{planDate.value=isoFuture(Number($('days').value));});
+planDate.addEventListener('change',()=>{$('days').value=daysToPlan();});
+function purchasePayload() { return {name:$('purchase-name').value.trim(),category:$('purchase-category').value,planned_date:planDate.value,cost:Number($('cost').value),reserve:Number($('reserve').value),monthly_saving:Number($('saving').value)}; }
+async function showSavedPurchases() {
+  const container=$('saved-purchases');
+  const data=await api('purchase-scenarios');
+  container.replaceChildren(text('h3','Saved purchase scenarios'));
+  if(!data.length){container.append(text('p','No saved scenarios yet.'));return;}
+  for(const item of data){
+    const card=document.createElement('div');card.className='result';card.style.marginTop='12px';
+    const heading=text('strong',item.name+' · '+item.category.replaceAll('_',' ')+' · '+item.planned_date);
+    const summary=text('p',fmt(item.cost)+' · Balance after purchase: '+fmt(item.simulation.after_purchase)+' · '+(item.simulation.affordable_under_model?'Within reserve':'Below reserve'));
+    const del=text('button','Delete');del.type='button';del.className='secondary';del.addEventListener('click',async()=>{try{await api('purchase-scenarios/'+item.id,null,'DELETE');await showSavedPurchases();notify('Saved scenario deleted.');}catch(e){notify(e.message,true)}});
+    card.append(heading,summary,del);container.append(card);
+  }
+}
+on('save-purchase','click',async()=>{if(!$('scenario').reportValidity())return;const data=purchasePayload();await api('purchase-scenarios',data);await showSavedPurchases();notify('Saved '+data.name+' with simulation and evidence.');});
+showSavedPurchases().catch(e=>notify('Could not load saved scenarios: '+e.message,true));
+on('scenario','submit',async()=>{
+  if(planDate.value){$('days').value=daysToPlan();}
+  const result=await api('simulate',{cost:Number($('cost').value),days:Number($('days').value),reserve:Number($('reserve').value),monthly_saving:Number($('saving').value)});
+  $('simulation').className=result.affordable_under_model?'result':'result alert';
+  $('simulation').textContent=$('purchase-name').value+' ('+$('purchase-category').selectedOptions[0].text+', '+planDate.value+')\n'+(result.affordable_under_model?'This purchase keeps you above your minimum balance in this estimate.':'Alert: this purchase would leave less than your minimum balance.')+'\nEstimated balance before purchase: '+fmt(result.baseline)+'\nAfter purchase: '+fmt(result.after_purchase)+'\nMinimum balance to keep: '+fmt(result.reserve)+'\n\n'+result.assumptions;
+});
 on('chat-form','submit',async()=>{$('answer').classList.remove('alert');$('answer').textContent='FinPilot is reviewing your transactions…';try{const result=await api('chat',{question:$('question').value,history:chatHistory.slice(-12)});$('answer').textContent=result.answer;chatHistory.push({role:'user',content:$('question').value},{role:'assistant',content:result.answer.slice(0,6000)})}catch(error){$('answer').classList.add('alert');$('answer').textContent=error.message;throw error}});
 on('digest','click',async()=>{await api('digest',{});await refresh();notify('Brief saved with its supporting evidence.')});
 on('demo','click',async()=>{await api('demo',{});await refresh();notify('Synthetic demo data loaded. Balance set to ₹45,000.')});

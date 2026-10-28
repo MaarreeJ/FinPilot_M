@@ -31,6 +31,7 @@ def connect():
     db.execute('CREATE TABLE IF NOT EXISTS subscriptions (merchant TEXT PRIMARY KEY COLLATE NOCASE, payload TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS goals (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
     db.execute('CREATE TABLE IF NOT EXISTS deliveries (day TEXT PRIMARY KEY, status TEXT, attempts INTEGER, payload TEXT NOT NULL)')
+    db.execute('CREATE TABLE IF NOT EXISTS purchase_scenarios (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, payload TEXT NOT NULL)')
     db.commit()
     try:
         with db:
@@ -117,6 +118,31 @@ class Scenario(BaseModel):
     monthly_saving: float = Field(default=0, ge=0, le=1e9, allow_inf_nan=False)
 
 
+class NamedPurchase(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    category: Literal['travel', 'electronics', 'shopping', 'education', 'health', 'home', 'other'] = 'other'
+    planned_date: date
+    cost: float = Field(gt=0, le=1e9, allow_inf_nan=False)
+    reserve: float = Field(default=0, ge=0, le=1e12, allow_inf_nan=False)
+    monthly_saving: float = Field(default=0, ge=0, le=1e9, allow_inf_nan=False)
+
+    @field_validator('name')
+    @classmethod
+    def clean_name(cls, value):
+        value = ' '.join(value.split())
+        if not value:
+            raise ValueError('Purchase name required')
+        return value
+
+    @field_validator('planned_date')
+    @classmethod
+    def valid_plan_date(cls, value):
+        days = (value - date.today()).days
+        if not 1 <= days <= 365:
+            raise ValueError('Planned date must be 1–365 days in the future')
+        return value
+
+
 class ChatMessage(BaseModel):
     role: Literal['user', 'assistant']
     content: str = Field(min_length=1, max_length=6000)
@@ -195,6 +221,49 @@ def simulate(body: Scenario):
         raise HTTPException(422, str(exc)) from exc
     return {**report['simulation'], 'orchestration': report['orchestration'],
             'execution_trace': report['execution_trace']}
+
+
+@app.get('/api/purchase-scenarios', dependencies=[Depends(authorize)])
+def list_purchase_scenarios():
+    with connect() as db:
+        return [dict(id=row['id'], created_at=row['created_at'], **json.loads(row['payload']))
+                for row in db.execute('SELECT * FROM purchase_scenarios ORDER BY id DESC LIMIT 100')]
+
+
+@app.post('/api/purchase-scenarios', status_code=201, dependencies=[Depends(authorize)])
+def save_purchase_scenario(body: NamedPurchase):
+    days = (body.planned_date - date.today()).days
+    with connect() as db:
+        rows = [dict(r) for r in db.execute('SELECT * FROM transactions')]
+        balance = db.execute('SELECT balance FROM settings WHERE id=1').fetchone()[0]
+    try:
+        report = Coordinator().run(rows, balance, date.today(), scenario={
+            'cost': body.cost, 'days': days,
+            'reserve': body.reserve, 'monthly_saving': body.monthly_saving
+        })
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    payload = {**body.model_dump(mode='json'), 'days': days,
+               'simulation': report['simulation'],
+               'evidence': {'as_of': report['as_of'],
+                            'transaction_ids': [r['id'] for r in rows],
+                            'balance': balance},
+               'assumptions': report['simulation'].get('assumptions')}
+    created = datetime.now(timezone.utc).isoformat()
+    with connect() as db:
+        cursor = db.execute('INSERT INTO purchase_scenarios(created_at,payload) VALUES(?,?)',
+                            (created, json.dumps(payload)))
+        scenario_id = cursor.lastrowid
+    return {'id': scenario_id, 'created_at': created, **payload}
+
+
+@app.delete('/api/purchase-scenarios/{scenario_id}', dependencies=[Depends(authorize)])
+def delete_purchase_scenario(scenario_id: int):
+    with connect() as db:
+        changed = db.execute('DELETE FROM purchase_scenarios WHERE id=?', (scenario_id,)).rowcount
+    if not changed:
+        raise HTTPException(404, 'Scenario not found')
+    return {'deleted': True}
 
 
 @app.post('/api/chat', dependencies=[Depends(authorize)])
