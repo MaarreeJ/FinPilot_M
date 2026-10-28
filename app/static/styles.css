@@ -12,3 +12,5 @@
 #categories .category-line strong{color:#e3ebf7;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
 #categories .bar{height:6px;background:color-mix(in srgb,var(--category-color) 15%,#111e30)}
 #categories .bar span{border-radius:6px}
+
+select {width:100%;padding:12px;border-radius:8px;background:#122035;color:#e4edf8;border:1px solid #40536b;margin-bottom:12px;} #subscriptions .two-col,#goals .two-col{align-items:start;}

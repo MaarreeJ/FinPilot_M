@@ -47,9 +47,10 @@ function draw(path) {
 }
 
 let transactions = [];
+let chatHistory = [];
 let initialLoad = true;
 function showTab(key, focus = false) {
-  const valid = ['overview', 'transactions', 'plan', 'ask', 'briefs', 'settings'];
+  const valid = ['overview', 'transactions', 'plan', 'ask', 'briefs', 'subscriptions', 'goals', 'settings'];
   if (!valid.includes(key)) key = 'overview';
   for (const name of valid) $(name === 'transactions' ? 'transactions-panel' : name).hidden = name !== key;
   for (const tab of document.querySelectorAll('[role="tab"]')) {
@@ -104,6 +105,10 @@ function recommendation(item) {
   const evidence = item.evidence;
   if (item.trigger === 'spending_increase') {
     details.append(text('p', `${evidence.category.replaceAll('_', ' ')} spending rose ${evidence.increase_pct}%: ${fmt(evidence.previous)} in the preceding 30 days compared with ${fmt(evidence.current)} in the latest 30 days.`));
+  } else if (item.trigger === 'unused_subscription') {
+    details.append(text('p', `You confirmed ${evidence.merchant} is unused and active; ${fmt(evidence.amount)} per ${evidence.cycle} cycle. Transaction IDs: ${evidence.transaction_ids.join(', ') || 'manually entered'}.`));
+  } else if (item.trigger === 'goal_shortfall') {
+    details.append(text('p', `Saved ${fmt(evidence.saved)} toward ${fmt(evidence.target)}. Projected ${fmt(evidence.projected)} by ${evidence.deadline}. ${evidence.assumption}`));
   } else {
     details.append(text('p', `The projected ending balance is ${fmt(evidence.projected_balance)}, based on ${evidence.observed_days} days of history.`));
   }
@@ -112,6 +117,8 @@ function recommendation(item) {
 async function refresh() {
   const [d, tx, audit] = await Promise.all([api('dashboard'), api('transactions'), api('audit')]);
   transactions = tx;
+  renderPlans(d);
+  await renderDelivery();
   if (initialLoad) { $('getting-started').open = tx.length === 0; initialLoad = false; }
   if ($('simulation').textContent) { $('simulation').className = 'result'; $('simulation').textContent = 'Your financial data was refreshed. Check this purchase again for an updated estimate.'; }
   $('load-status').textContent = `Updated ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} · Analysis as of ${d.as_of}`;
@@ -170,6 +177,7 @@ async function refresh() {
     details.append(text('summary', new Date(item.created_at).toLocaleString()));
     details.append(text('span', report.answer ? 'AI conversation' : 'Financial brief', 'badge'));
     details.append(text('p', `Balance: ${fmt(report.balance)} · Forecast: ${report.forecast?.available ? fmt(report.forecast.projected_balance) : 'Unavailable'}`));
+    if (report.digest) { details.append(text('p', 'Insight: '+report.digest.insight), text('p', 'Action: '+report.digest.action)); }
     if (report.question) details.append(text('p', `Question: ${report.question}`));
     if (report.answer) details.append(text('p', report.answer));
     const recommendations = report.recommendations || [];
@@ -183,10 +191,10 @@ on('balance-form','submit',async()=>{await api('balance',{balance:Number($('curr
 on('upload','submit',async()=>{const form=new FormData();form.append('file',$('csv').files[0]);const result=await api('import',form);await refresh();notify(`${result.imported} transactions imported; ${result.duplicates_skipped} duplicates skipped.`)});
 on('manual','submit',async()=>{await api('transactions',{date:$('tx-date').value,merchant:$('merchant').value,amount:Number($('amount').value)});await refresh();notify('Transaction saved. Update your current balance separately if needed.')});
 on('scenario','submit',async()=>{const result=await api('simulate',{cost:Number($('cost').value),days:Number($('days').value),reserve:Number($('reserve').value),monthly_saving:Number($('saving').value)});$('simulation').className=result.affordable_under_model?'result':'result alert';$('simulation').textContent=`${result.affordable_under_model?'This purchase keeps you above your minimum balance in this estimate.':'Alert: this purchase would leave less than your minimum balance.'}\nEstimated balance before purchase: ${fmt(result.baseline)}\nAfter purchase: ${fmt(result.after_purchase)}\nMinimum balance to keep: ${fmt(result.reserve)}\n\n${result.assumptions}`});
-on('chat-form','submit',async()=>{$('answer').classList.remove('alert');$('answer').textContent='FinPilot is reviewing your transactions…';try{const result=await api('chat',{question:$('question').value});$('answer').textContent=result.answer}catch(error){$('answer').classList.add('alert');$('answer').textContent=error.message;throw error}});
+on('chat-form','submit',async()=>{$('answer').classList.remove('alert');$('answer').textContent='FinPilot is reviewing your transactions…';try{const result=await api('chat',{question:$('question').value,history:chatHistory.slice(-12)});$('answer').textContent=result.answer;chatHistory.push({role:'user',content:$('question').value},{role:'assistant',content:result.answer.slice(0,6000)})}catch(error){$('answer').classList.add('alert');$('answer').textContent=error.message;throw error}});
 on('digest','click',async()=>{await api('digest',{});await refresh();notify('Brief saved with its supporting evidence.')});
 on('demo','click',async()=>{await api('demo',{});await refresh();notify('Synthetic demo data loaded. Balance set to ₹45,000.')});
-on('connect','click',async()=>{token=$('token').value;sessionStorage.setItem('finpilot-token',token);await refresh();notify('Connected.')});
+on('connect','click',async()=>{chatHistory=[];token=$('token').value;sessionStorage.setItem('finpilot-token',token);await refresh();notify('Connected.')});
 $('tx-date').value=new Date().toLocaleDateString('en-CA');$('tx-date').max=$('tx-date').value;fetch('/health').then(r=>r.json()).then(h=>$('ai-status').textContent=h.mesh_configured?'AI chat configured':'AI chat needs setup').catch(()=>{$('ai-status').textContent='AI status unavailable'});refresh().catch(e=>{$('load-status').textContent='Could not load your data. Check the connection settings and try again.';notify(e.message,true)});
 
 document.querySelectorAll('[data-question]').forEach(button => {
@@ -204,3 +212,42 @@ $('scenario').addEventListener('input', () => {
 });
 
 $('today-label').textContent = new Date().toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric'});
+
+
+function renderPlans(d) {
+  $('subscription-list').replaceChildren();
+  if (!d.subscriptions.length) $('subscription-list').append(text('p','No subscriptions found. Add a service using the form.'));
+  for (const sub of d.subscriptions) {
+    const box=text('div','','insight');
+    box.append(text('h3',sub.merchant),text('p',`${fmt(sub.amount)} · ${sub.cycle} · Usage: ${sub.usage} · ${sub.confirmed ? (sub.active ? 'Active, confirmed' : 'Inactive, confirmed') : 'Candidate: review billing and usage'}`));
+    const edit=text('button','Review details','secondary');edit.type='button';
+    edit.onclick=()=>{$('sub-merchant').value=sub.merchant;$('sub-amount').value=sub.amount;$('sub-cycle').value=sub.cycle==='unknown'?'monthly':sub.cycle;$('sub-usage').value=sub.usage;$('sub-active').value=String(sub.active!==false);$('sub-merchant').focus();};
+    box.append(edit);$('subscription-list').append(box);
+  }
+  $('goal-list').replaceChildren();
+  if (!d.goals.length) $('goal-list').append(text('p','No saved goals yet.'));
+  for (const g of d.goals) {
+    const box=text('div','','insight');box.append(text('h3',g.name),text('p',g.status.replaceAll('_',' ')),text('p',`${fmt(g.saved)} saved of ${fmt(g.target)} · Due ${g.deadline}`),text('p',g.status==='needs_history'?'Import recent history to project progress.':`Projected: ${fmt(g.projected)} · Shortfall: ${fmt(g.shortfall)} · Funded monthly contribution: ${fmt(g.allocated_monthly)}`));
+    const edit=text('button','Update progress','secondary');edit.type='button';
+    edit.onclick=()=>{for(const k of ['id','name','target','saved','monthly','deadline']) $('goal-'+k).value=g[k];$('goal-name').focus();};
+    const remove=text('button','Delete goal','secondary');remove.type='button';
+    remove.onclick=async()=>{if(!confirm('Delete this savings goal?'))return;try{await api('goals/'+g.id,undefined,'DELETE');await refresh();notify('Goal deleted.');}catch(e){notify(e.message,true);}};
+    box.append(edit,remove);$('goal-list').append(box);
+  }
+}
+async function renderDelivery() {
+  const d=await api('delivery');
+  $('send-email').disabled=!(d.enabled&&d.configured);
+  $('email-status').textContent=`Daily schedule: ${String(d.hour_utc).padStart(2,'0')}:00 UTC while the server runs. ${d.enabled&&d.configured?'Email enabled.':'Email needs local configuration and opt-in.'} ${d.records.length?'Latest delivery: '+d.records[0].status:''}`;
+}
+on('subscription-form','submit',async()=>{
+  await api('subscriptions',{merchant:$('sub-merchant').value,amount:Number($('sub-amount').value),cycle:$('sub-cycle').value,usage:$('sub-usage').value,active:$('sub-active').value==='true'},'PUT');
+  await refresh();notify('Subscription details saved. No service was cancelled.');
+});
+on('goal-form','submit',async()=>{
+  const id=$('goal-id').value;
+  await api('goals'+(id?'/'+id:''),{name:$('goal-name').value,target:Number($('goal-target').value),saved:Number($('goal-saved').value),monthly:Number($('goal-monthly').value),deadline:$('goal-deadline').value},id?'PUT':'POST');
+  $('goal-form').reset();$('goal-id').value='';await refresh();notify('Goal saved. No money was moved.');
+});
+$('new-goal').onclick=()=>{$('goal-form').reset();$('goal-id').value='';};
+on('send-email','click',async()=>{if(!confirm('Send today’s financial brief to the email address configured on this server?'))return;await api('digest/send',{});await refresh();notify('Email accepted by the mail server.');});

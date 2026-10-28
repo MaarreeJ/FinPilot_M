@@ -1,111 +1,49 @@
-# FinPilot — a proactive personal finance assistant
+# FinPilot — proactive financial planning
 
-FinPilot turns imported transactions into spending patterns, a 30-day cash-flow projection, evidence-linked actions, and purchase simulations. Its conversational assistant uses **Mesh API exclusively** for every LLM call.
+FinPilot imports INR transactions, finds spending changes, forecasts cash flow, simulates purchases and recommends evidence-linked actions. FastAPI, SQLite, LangGraph and APScheduler power a responsive web interface. Every LLM call goes through Mesh API.
 
-Built for Agent Arena 2026. Final local verification: **27 October 2026**. This repository is a working single-user hackathon prototype, not a production banking service.
-
-![FinPilot demo](data/demo-preview.png)
+This is a single-user hackathon prototype, not a production banking service.
 
 ## Run locally
 
-Use Python 3.11 or newer. From this repository's root:
+Use Python 3.11 or newer:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-lock.txt
 cp .env.example .env
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-On Windows, activate with `.venv\Scripts\activate`.
+On Windows activate with `.venv\Scripts\activate`. Open http://127.0.0.1:8000. Keep the process running for scheduled briefs. Run one worker.
 
-Open **http://127.0.0.1:8000**. Select **Try sample data** in an empty database for a complete synthetic demo. The demo sets a ₹45,000 current balance. For your own data, import a CSV and enter today's actual bank balance separately. Importing transactions does not change that balance.
+Add a working `MESH_API_KEY` to the gitignored `.env`. The default `MESH_MODEL` is `openai/gpt-4o`; use a model available to your account supporting tool calls. The fixed base URL is `https://api.meshapi.ai/v1`. There is no direct-provider fallback. A configured-key badge does not establish working credit or completion access.
 
-For live AI conversation, add your Mesh key to the local `.env`:
+## Agents and approval boundaries
 
-```dotenv
-MESH_API_KEY=your_mesh_key_here
-MESH_MODEL=openai/gpt-4o
+The distinct tools are Categorizer (merchant/direction rules), Analyzer (equal 30-day spending comparisons), Forecaster (trailing cash-flow projection), PurchaseSimulator (purchase/reserve scenarios) and Advisor (evidence-linked proposals).
+
+The coordinator invokes a LangGraph StateGraph:
+
+```text
+stored categorized transactions
+  → analyze → forecast → [optional simulate] → advise → assemble
 ```
 
-The API endpoint is fixed in source to `https://api.meshapi.ai/v1`. No fallback to another AI provider exists. Missing credentials produce an explicit unavailable message; deterministic financial tools still work. The key stays on the backend. Do not paste secrets into the browser chat or commit `.env`.
+Reports expose `execution_trace`, `orchestration` and a workflow version. Each graph invocation owns its state; the compiled topology is cached. Ingestion categorizes before storage. The graph does not move money, cancel services, or save plans. User saves are explicit UI/API actions. Successful chats and scheduled briefs save audit snapshots automatically.
 
-Set MESH_MODEL to a model available to your Mesh account; the default is openai/gpt-4o. **Live check on 27 October 2026: Mesh metadata returned HTTP 200; chat returned HTTP 402 with spend_limit_exceeded; a successful completion remains unverified. The responsible account restriction has not been established; check with Mesh or the sponsor.**
+## Use the app
 
-## Tabbed interface (27 October 2026)
+1. **Transactions:** import CSV or enter transactions, then separately save the actual current bank balance. **Try sample data** seeds an empty database with synthetic transactions and a ₹45,000 balance.
+2. **Overview:** inspect spending changes, forecast and “Why this recommendation?”
+3. **Subscriptions:** review detected merchants. Confirm billing cycle, amount, active status and whether you use a service. Only an active, user-confirmed unused service triggers a cancellation suggestion. Transactions alone cannot establish usage. Annual and weekly costs are converted to approximate monthly equivalents.
+4. **Savings goals:** save a target, deadline within two years, amount already saved and planned monthly contribution. Update savings as you progress. Goals show achieved, on-track, at-risk, overdue or needs-history status. Forecast surplus is shared proportionally across unfinished goals rather than allocated in full to each.
+5. **Plan a purchase:** simulate a cost, horizon, minimum reserve and extra monthly savings without changing your finances.
+6. **Ask FinPilot:** ask free-form questions grounded in the current report. Try “Can I afford a ₹30,000 trip in 30 days while keeping ₹15,000?” Mesh may invoke the same read-only simulator. Missing details require clarification. Up to 12 recent messages support follow-ups; at most three tool calls per request. Successful tool arguments/results and the financial context are recorded in audit history.
+7. **Daily briefs:** inspect a saved snapshot, one selected insight and one action. Optional SMTP sends the same digest on a real APScheduler schedule.
 
-- **Overview:** balance, forecast, spending categories, and recommendations with readable evidence.
-- **Transactions:** CSV import, manual entry, balance updates, and search of the latest 500 transactions.
-- **Plan a purchase:** test a purchase against a future balance and minimum reserve.
-- **Ask FinPilot:** evidence-grounded Mesh conversation, with clear messages if access is unavailable.
-- **Daily briefs:** manually saved and scheduled snapshots, plus saved AI conversations.
-- **Settings:** optional access token and a short explanation of the financial tools.
-
-Tabs support arrow keys, Home/End, direct links, and browser back/forward. The layout adapts to phone screens. Viewing or refreshing the dashboard no longer creates a saved brief; use **Save a brief now**, or leave the server running for scheduled briefs.
-
-To run the updated interface on the port used in this project chat, open a terminal in the `finpilot` folder:
-
-```bash
-./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
-```
-
-Open http://127.0.0.1:8765. Keep the existing `.env` and database. Avoid mixing synthetic test profiles into an existing transaction history; use an empty disposable database for independent scenarios.
-
-Before the final demo: import a complete recent history, save the actual balance, inspect a recommendation, test a purchase, and save/reopen a brief. AI completion access must be checked separately; a configured-key badge is not proof that credits or account access are working.
-
-## Tools used
-
-| Purpose | Choice |
-|---|---|
-| Web/API server | FastAPI + Uvicorn |
-| LLM access | OpenAI Python client, exclusively through Mesh API |
-| Storage | SQLite |
-| Scheduling | APScheduler, daily at 03:00 UTC / 08:30 IST by default |
-| Interface | Responsive HTML, CSS, JavaScript; no frontend build step |
-| Testing | pytest + FastAPI TestClient |
-| Delivery | Docker and GitHub Actions |
-
-`requirements.txt` contains direct dependency ranges. `requirements-lock.txt` captures the exact tested environment; use `pip install -r requirements-lock.txt` to reproduce it.
-
-## How the agents cooperate
-
-```mermaid
-flowchart LR
-    A[CSV or manual transaction] --> B[Categorizer]
-    B --> C[(SQLite)]
-    C --> D[Coordinator]
-    D --> E[Analyzer]
-    E --> F[Forecaster]
-    F --> G[Advisor]
-    G --> H[Evidence and audit history]
-    F --> I[What-if simulator]
-    H --> J[Mesh conversational assistant]
-    K[Daily scheduler] --> D
-```
-
-The four specialists have different deterministic tools and responsibilities. They are explicit Python components, not four differently named copies of one prompt:
-
-1. **Categorizer:** merchant keywords and transaction direction assign categories; unmatched merchants remain `other`.
-2. **Analyzer:** compares expenses in the latest 30 days with the preceding 30 days and detects increases of at least 20%.
-3. **Forecaster:** projects average daily net cash flow over up to 90 days from a user-entered current balance.
-4. **Advisor:** converts spending increases and negative projected balances into concrete actions, prioritized by potential saving. Each action contains its triggering evidence.
-
-The coordinator assembles the output. The **Mesh conversational assistant** interprets these computed facts using a separate evidence-grounded prompt. The four financial specialists are rules/tools rather than LLM agents. This is a deliberate, testable baseline architecture; we do not claim LangGraph integration or autonomous bank access.
-
-## Demo in three minutes
-
-1. Start the app and select **Try sample data**.
-2. Observe food delivery rising from ₹4,000 to ₹5,600: **40% higher**, with a **₹1,600 reduction target**.
-3. Inspect the forecast, then simulate a ₹25,000 purchase while preserving a ₹10,000 reserve.
-4. Increase the purchase to ₹100,000 to demonstrate an unfavorable scenario. Try additional monthly savings and compare the outcome.
-5. Open **Why this recommendation?** to inspect the underlying comparison.
-6. With a working Mesh key, ask: “What changed in my spending, and what should I focus on?”
-7. Save a brief and inspect its persisted decision history. The real scheduler also saves a daily digest while the process is running.
-
-## Input contract
-
-CSV headers: `date,merchant,amount`. Dates use `YYYY-MM-DD`. Expenses are negative; inflows are positive. Values must be finite, and future transactions are rejected. Use one currency only: **INR**. The CSV files under data/ are synthetic and have fixed dates; the demo button generates dates relative to the day it runs.
+## CSV format and forecast assumptions
 
 ```csv
 date,merchant,amount
@@ -114,131 +52,113 @@ date,merchant,amount
 2026-10-03,Zomato,-560
 ```
 
-Imports are atomic: one invalid row rejects the entire file. Uploads are limited to 2 MB. Exact repeats of `(date, merchant, amount)` are skipped. This prevents accidental repeat imports but also collapses legitimate identical same-day purchases; use bank transaction IDs before expanding to real banking integrations. The transactions table shows the latest 500 rows; analysis uses the complete imported history within its time windows.
+Use INR only, negative expenses, positive inflows and dates YYYY-MM-DD. Future transactions, nonfinite amounts and uploads over 2 MB are rejected. Imports are atomic; exact date/merchant/amount duplicates are skipped. This also collapses legitimate identical same-day purchases. The transaction list displays the latest 500; analysis reads all applicable history.
 
-## Forecast and simulation assumptions
+Spending comparisons use equal recent and preceding 30-day windows, with alerts at increases of at least 20%. This is a rule-based signal, not statistical anomaly detection. Forecasts average signed cash flow over up to 90 days, assuming complete history and zero activity on missing days. Fewer than 30 observed days are flagged.
 
-- Observation period: earliest imported date within the trailing 90 days through today, inclusive. Missing transaction days are treated as zero activity; input history must therefore be complete.
-- Daily net cash flow = total signed cash flow / observation days.
-- Projected balance = current balance + daily net × horizon days.
-- Scenario balance = projected balance − one-time purchase + additional monthly savings × days / 30.
-- “Affordable under model” means the **ending** scenario balance meets the entered reserve. It does not verify liquidity on every day before the purchase.
-- Salary dates, recurring bill timing, inflation, interest, seasonality, and unknown future spending are not modeled. Less than 30 days of history is marked as limited history in the API.
-- A spending increase is a comparison signal, not statistical proof of unusual behavior. Partial histories can distort the comparison.
-- The app cannot establish whether a subscription is unused and never asserts that it is.
+Projected balance = entered balance + average daily net × horizon.
+Scenario balance = projected balance − purchase + extra monthly saving × days / 30.
 
-## Auditable decisions and scheduling
+Affordability checks only the ending reserve. Bill timing, salary dates, interest, seasonality and unseen future changes are not modeled. Savings goals cap contributions at positive historical monthly surplus, proportionally across goals. Entered savings are not inferred from bank balance. Goal and purchase models are separate estimates, not a full accounting ledger.
 
-Explicitly saved briefs and scheduled daily digests are stored in SQLite with UTC creation times, input transaction IDs, as-of dates, balances, forecast assumptions, and recommendation evidence. Successful AI answers are also saved alongside their question and financial context. The latest 30 snapshots are available through `/api/audit`; the UI shows the latest 30 saved entries.
+Synthetic CSV scenarios and expected results are in `data/finpilot_csv_test_pack/`. Fixed-date samples change their trailing-window metrics as time passes. Do not combine independent profiles in one database.
 
-APScheduler runs inside the web process. Run **one worker** to avoid duplicate schedules. The process must remain running at the configured hour; missed runs during downtime are not replayed. Delivery is to the **in-app history only**; email and Telegram delivery are not implemented.
+## Scheduled email
 
-## API
+Email is disabled by default. Add private settings to `.env`, then restart:
+
+```dotenv
+DIGEST_EMAIL_ENABLED=true
+DIGEST_HOUR_UTC=3
+SMTP_HOST=your-smtp-host
+SMTP_PORT=587
+SMTP_SECURITY=starttls
+SMTP_USERNAME=your-smtp-username
+SMTP_PASSWORD=your-smtp-app-password
+SMTP_FROM=your-sender-address
+DIGEST_EMAIL_TO=your-recipient-address
+```
+
+For implicit TLS use `SMTP_SECURITY=ssl` and port 465. Do not commit credentials. The default schedule is 03:00 UTC / 08:30 IST. A daily brief is saved while the process runs, and email is sent when enabled. Missed downtime runs are not replayed. “Email today’s brief” supports an explicit send/retry.
+
+SQLite records delivery attempts per UTC day. Sent, in-flight and uncertain sends are not automatically repeated. Failed sends allow at most three attempts per day, reusing the original snapshot. Uncertain acceptance or an interrupted in-flight delivery needs mailbox/server review; the app does not blindly retry. SMTP acceptance does not prove inbox receipt. This is not a durable queue.
+
+The actual scheduler and SMTP path are tested with a mock recipient `recipient@example.test`. No real email is sent by tests. Live SMTP remains a deployment configuration and verification step.
+
+## API and security
 
 Interactive API documentation: `/docs`.
 
-| Method | Route | Purpose |
-|---|---|---|
-| GET | `/health` | Health and whether a Mesh key is configured |
-| GET | `/api/dashboard` | Read evidence-backed report without saving a brief |
-| GET / POST | `/api/transactions` | List / manually log transactions |
-| POST | `/api/import` | CSV multipart upload, field `file` |
-| POST | `/api/balance` | Set current bank balance |
-| POST | `/api/simulate` | Cost, days, reserve, monthly_saving |
-| POST | `/api/chat` | Evidence-grounded question through Mesh |
-| POST | `/api/demo` | Seed an empty database |
-| POST | `/api/digest` | Persist an immediate brief |
-| GET | `/api/audit` | Recent report snapshots |
-
-Set `FINPILOT_TOKEN` before exposing the service beyond localhost. API requests then require `Authorization: Bearer <token>`. The interface accepts this token under **Connection settings** and stores it only in browser session storage. This is single-user protection, not multi-tenant authentication.
-
-## Tests and honest self-evaluation
-
-```bash
-python -m pytest -q
-python evaluation/run.py
-```
-
-Latest local result: **19 tests passed**. Tests cover full demo flow, atomic CSV import, duplicate detection, input validation, authentication, time-window boundaries, stale-history handling, simulation arithmetic, scheduler registration, and Mesh routing using a mock client. A dependency deprecation warning remains in FastAPI's TestClient/httpx integration; tests pass.
-
-Measured synthetic evaluation, seed `20261018`:
-
-| Metric | Result |
-|---|---:|
-| Categorization accuracy, 25 labeled cases | **80.0% (20/25)** |
-| 30-day forecast mean absolute error, 30 holdout windows | **₹5,277.48** |
-| Stable profile MAE | ₹0.00 |
-| Variable-spending profile MAE | ₹897.17 |
-| Unseen spending-shift profile MAE | ₹14,935.26 |
-
-See [`evaluation/results.json`](evaluation/results.json) for every prediction and error, [`evaluation/categories.json`](evaluation/categories.json) for labels, and [`evaluation/run.py`](evaluation/run.py) for the reproducible experiment. Each forecast uses 90 training days and a separate 30-day holdout. These are small, developer-authored synthetic datasets, not an independent real-world benchmark. Unfamiliar merchants, positive refunds, and sudden behavior changes reveal known limitations. Live LLM quality is not included in these numbers.
-
-## GitHub and hackathon submission
-
-Public repository: **MaarreeJ/FinPilot_M**. This folder is standalone; publish its contents at the repository root, not the unrelated parent project.
-
-Two workflows are included:
-
-- `.github/workflows/tests.yml`: tests, compilation, reproducible evaluation.
-- `.github/workflows/agent-arena-2026-checks.yml`: the official organizer workflow downloaded from the URL in the brief on 18 October 2026. It obtains a GitHub OIDC token, downloads the organizer's checker, and runs it with the required repository secrets.
-
-In **Settings → Secrets and variables → Actions**, add:
-
-- `MESH_API_KEY`: your working Mesh key.
-- `SUBMISSION_TOKEN`: the token on your registered hackathon dashboard.
-
-Push a commit after adding secrets, then inspect both workflows in **Actions**. Missing secrets will prevent organizer eligibility checks from passing. Local tests do not establish submission eligibility. Registration and final submission still happen through the organizer's dashboard.
-
-## Deployment
-
-```bash
-docker build -t finpilot .
-docker volume create finpilot-data
-docker run --env-file .env -p 127.0.0.1:8000:8000 -v finpilot-data:/data finpilot
-```
-
-The container runs as a non-root user. For a public deployment, configure HTTPS at a reverse proxy, set a strong `FINPILOT_TOKEN`, use a persistent volume, and keep one worker. Docker configuration is supplied but has not been built in this environment.
-
-Before handling multiple clients' financial data, add per-user authentication and authorization, isolated storage, rate limits, encrypted backups, retention/deletion controls, production monitoring, and security review. The current app is designed for a hackathon demonstration with synthetic data.
-
-## Final requirement audit — 27 October 2026
-
-| Requirement from the supplied challenge | Verified implementation / limitation |
+| Route | Purpose |
 |---|---|
-| All LLM calls through Mesh | The only completion call uses `https://api.meshapi.ai/v1`, `MESH_API_KEY`, and `MESH_MODEL`. No direct-provider fallback. Routing is tested with a mock. Live metadata returned HTTP 200; live chat is blocked by HTTP 402 `spend_limit_exceeded`. |
-| Distinct agents and coordinator | Categorizer, Analyzer, Forecaster, Advisor and Coordinator have different deterministic tools; conversation uses a separate grounded Mesh prompt. No LangGraph claim. |
-| Ingestion, categorization and storage | CSV and manual entry persist data-dependent categories in SQLite. Atomic validation, duplicate imports and five published CSV scenarios pass. |
-| Behavior analysis and anomalies | Equal 30-day category comparisons detect spending increases of at least 20%. This is a baseline rule, not a statistical anomaly detector or proof that subscriptions are unused. |
-| Forecast and what-if simulation | 30-day cash-flow forecast, purchase cost, minimum reserve, horizon and extra monthly savings. Uses historical average cash flow; bill timing and per-day liquidity are not modeled. |
-| Specific proactive advice | Spending increases produce amount-specific reduction targets; negative forecasts trigger a cash-buffer action. No ungrounded cancellation claims. |
-| Auditable trail | Saved briefs and AI answers persist transaction IDs, financial context and recommendation evidence. Merely viewing the dashboard does not create a brief. Simulations are not persisted. |
-| Recorded self-evaluation | 25 labeled merchant examples; 30 seeded forecast holdouts; prediction-level results and limitations in `evaluation/results.json`. |
-| Background digest | Real APScheduler job saves an in-app brief. A regression test runs a scheduled job and checks persistence. Email/Telegram delivery is not implemented. |
-| Public repository and documentation | `https://github.com/MaarreeJ/FinPilot_M`; source, requirements, README, design decisions, tests, sample data and both workflows are present. |
+| GET /health | App status and Mesh key presence |
+| GET /api/dashboard | Read-only LangGraph report |
+| GET/POST /api/transactions | List/log transactions |
+| POST /api/import | CSV upload, multipart field file |
+| POST /api/balance | Explicit balance save |
+| POST /api/simulate | Read-only purchase scenario |
+| POST /api/chat | Grounded Mesh conversation and optional simulation |
+| GET/PUT /api/subscriptions | Review/save confirmed subscription details |
+| GET/POST /api/goals | List/create savings goals |
+| PUT/DELETE /api/goals/{id} | Update/delete a goal |
+| POST /api/digest | Save a brief |
+| GET /api/delivery | Redacted delivery configuration/status |
+| POST /api/digest/send | Explicit opt-in email |
+| GET /api/audit | Latest 30 saved reports/chats |
+| POST /api/demo | Seed an empty database |
 
-### Verified local checks
+Set `FINPILOT_TOKEN` before exposing beyond localhost. APIs then require a bearer token; the UI stores it in session storage. This is single-user protection, not multi-user authorization. Databases and `.env` are gitignored.
 
-- All Python application, test and evaluation sources compile.
-- 19 automated tests pass, including all five CSV profiles at their documented 20 October reference date, repeat-import deduplication, simulations, evidence persistence, and a real scheduled background execution.
-- Dependency consistency: all 36 installed packages are compatible (`uv pip check`).
-- Browser rehearsal covers navigation, desktop/mobile layout, CSV upload, manual entry, balance saving, question prompts, AI error feedback and purchase alert states. Paid AI responses in browser tests are mocked; the live provider check is reported separately.
-- Re-running `evaluation/run.py` reproduces the committed result: 80% categorization accuracy and INR 5,277.48 forecast mean absolute error. Unseen spending shifts remain the largest error source.
-- The organizer workflow matches the currently downloaded official workflow exactly.
-- `.env` and databases are gitignored. No credential values are included in the source or this audit.
-- Docker build/run was not verified: the local Docker daemon is not running.
+## Verification and self-evaluation
 
-### Submission actions that remain
+```bash
+DIGEST_EMAIL_ENABLED=false python -m pytest -q
+python evaluation/run.py
+python -m pip check
+```
 
-1. Submit the public repository URL on the organizer's registered hackathon dashboard. The earlier official run passed all four critical checks, but result recording failed with HTTP 403: no entry had been submitted. A fresh workflow result must confirm the current commit.
-2. Resolve Mesh's chat spending restriction with Mesh or the sponsor, then demonstrate a successful grounded answer. Passing the metadata key check alone does not prove completion access.
-3. Check the organizer dashboard for the current submission window and any form-specific links. The provided challenge makes a demo video and deployed URL optional; this README does not assert additional social-post requirements or confirm a deadline.
-4. Optionally record a short demo: import data, update balance, inspect spending evidence, simulate INR 25,000 versus INR 100,000, and save/reopen a brief. Use the date-relative **Try sample data** in an empty disposable database for a stable 40% food-delivery increase.
-5. After final submission, re-run the official workflow if result recording still says an entry is missing. Keep `MESH_API_KEY` and `SUBMISSION_TOKEN` as repository secrets; do not publish them.
+28 October 2026: **39 automated tests passed**. Coverage includes atomic imports, duplicate detection, auth, independent LangGraph state, forecast arithmetic, subscription confirmation, goal progress/shared surplus, Mesh routing/tool invocation/history, audit evidence, real background scheduling with mock SMTP, delivery deduplication, retry limits and uncertain acceptance. Isolated desktop/mobile browser checks cover subscriptions, goal updates, recommendations and daily briefs.
 
-### Optional improvements, not claimed complete
+| Synthetic evaluation | Result |
+|---|---:|
+| Categorization, 25 labeled cases | 80% (20/25) |
+| Forecast MAE, 30 holdout windows | ₹5,277.48 |
+| Stable profile MAE | ₹0.00 |
+| Variable spending MAE | ₹897.17 |
+| Unseen spending shift MAE | ₹14,935.26 |
 
-LangGraph integration, savings-goal tracking, statistical or transaction-level anomaly detection, payment-timing forecasts, saved simulations, external email/Telegram delivery, and a deployed multi-user service remain future work. The current demonstration is a single-user deterministic financial pipeline with a Mesh conversational layer. Its financial forecasts are estimates rather than guarantees.
+Reproducible seed: 20261018. Each forecast uses a 90-day training window and separate 30-day holdout. Prediction-level results are committed in `evaluation/results.json`. This is a small developer-authored synthetic evaluation, not independent real-world validation. Positive refunds are treated as income; unfamiliar merchants and unseen spending shifts are known weaknesses. Live LLM quality is not measured by these tests.
 
-### Sample data locations
+## Challenge mapping
 
-The five isolated scenarios and their reference expectations are in `data/finpilot_csv_test_pack/`. Two additional fixed-date examples are `data/finpilot_sample_2026-10-01_to_2026-10-23.csv` and `data/finpilot_sample_90days_to_2026-10-23.csv`. Fixed-date data produces different trailing-window metrics as time passes. Do not combine independent profiles in one database when reproducing published expectations.
+| Requirement | Implementation |
+|---|---|
+| Multi-agent coordinator | Distinct financial tools coordinated through LangGraph |
+| Ingestion/categorization/storage | CSV/manual input, merchant rules, SQLite |
+| Behavior/anomalies | Data-dependent equal-window spending increases |
+| Forecast/simulation | Cash-flow projection and shared purchase simulator |
+| Grounded proactive advice | Spending targets, deficit alerts, confirmed-unused cancellation suggestions, goal shortfalls |
+| Audit trail | Trigger/evidence on each action; saved report and chat/tool snapshots |
+| Self-evaluation | Reproducible metrics, test fixtures and prediction results |
+| Structured framework bonus | Explicit LangGraph analyze → forecast → advise |
+| Goal bonus | Persistent targets/deadlines/progress and adapting advice |
+| Conversation bonus | Mesh-only questions and bounded read-only tool calling |
+| Scheduled delivery bonus | APScheduler plus opt-in SMTP, tested with mocked delivery |
+
+No Telegram integration, autonomous financial actions or production-readiness claim is made.
+
+## Submission
+
+Repository: https://github.com/MaarreeJ/FinPilot_M
+
+1. Push the final tested code and inspect the FinPilot tests workflow.
+2. Add working `MESH_API_KEY` and the organizer-provided `SUBMISSION_TOKEN` as GitHub Actions secrets; never commit them.
+3. Complete and submit the FinPilot entry at https://career.krishnaik.in/dashboard/hackathons?h=agent-arena-2026 using the public repository URL and any fields required by the form.
+4. Push again after submission so the official organizer workflow can record a fresh result. An earlier run reported HTTP 403 because no entry existed even though its checks passed.
+5. Confirm both the GitHub run and organizer dashboard record success.
+
+The organizer workflow is preserved. Eligibility checks do not establish complete challenge scoring. A successful live Mesh conversation and real email demonstration remain distinct from mocked tests. Only the organizer determines acceptance.
+
+## Deployment limitations
+
+A Dockerfile is supplied; Docker build/run is not verified in this environment. Before a multi-user release add real identity/tenant isolation, migrations, durable workers, rate/cost limits, monitoring, backup/restore verification and security/load tests. Keep one worker with the current scheduler. Localhost is not a publicly accessible deployed demo URL.

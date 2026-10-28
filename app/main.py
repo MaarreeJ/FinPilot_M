@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Literal
 import csv
 import io
 import json
@@ -13,6 +14,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
+from . import planning, delivery
 from .agents import Categorizer, Coordinator, converse, money
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -26,6 +28,9 @@ def connect():
     db.execute('CREATE TABLE IF NOT EXISTS reports (id INTEGER PRIMARY KEY, created_at TEXT, payload TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK(id=1), balance REAL DEFAULT 0)')
     db.execute('INSERT OR IGNORE INTO settings(id,balance) VALUES(1,0)')
+    db.execute('CREATE TABLE IF NOT EXISTS subscriptions (merchant TEXT PRIMARY KEY COLLATE NOCASE, payload TEXT NOT NULL)')
+    db.execute('CREATE TABLE IF NOT EXISTS goals (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
+    db.execute('CREATE TABLE IF NOT EXISTS deliveries (day TEXT PRIMARY KEY, status TEXT, attempts INTEGER, payload TEXT NOT NULL)')
     db.commit()
     try:
         with db:
@@ -38,7 +43,9 @@ def dashboard():
     with connect() as db:
         rows = [dict(row) for row in db.execute('SELECT * FROM transactions ORDER BY date, id')]
         balance = db.execute('SELECT balance FROM settings WHERE id=1').fetchone()[0]
-    report = Coordinator().run(rows, balance, date.today())
+        subscriptions = [json.loads(r['payload']) for r in db.execute('SELECT payload FROM subscriptions')]
+        goals = [dict(id=r['id'], **json.loads(r['payload'])) for r in db.execute('SELECT * FROM goals')]
+    report = Coordinator().run(rows, balance, date.today(), subscriptions=subscriptions, goals=goals)
     report['transaction_ids'] = [row['id'] for row in rows]
     return report
 
@@ -51,14 +58,16 @@ def save_report(report):
 
 
 def save_digest():
-    return save_report(dashboard())
+    report = dashboard()
+    report['digest'] = planning.digest(report)
+    return save_report(report)
 
 
 @asynccontextmanager
 async def lifespan(app):
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler(timezone='UTC')
-    scheduler.add_job(save_digest, 'cron', hour=int(os.getenv('DIGEST_HOUR_UTC', '3')),
+    scheduler.add_job(scheduled_digest, 'cron', hour=int(os.getenv('DIGEST_HOUR_UTC', '3')),
                       id='daily_digest', max_instances=1, coalesce=True)
     app.state.scheduler = scheduler
     scheduler.start()
@@ -108,7 +117,13 @@ class Scenario(BaseModel):
     monthly_saving: float = Field(default=0, ge=0, le=1e9, allow_inf_nan=False)
 
 
+class ChatMessage(BaseModel):
+    role: Literal['user', 'assistant']
+    content: str = Field(min_length=1, max_length=6000)
+
+
 class Question(BaseModel):
+    history: list[ChatMessage] = Field(default_factory=list, max_length=12)
     question: str = Field(min_length=1, max_length=2000)
 
 
@@ -171,27 +186,25 @@ async def import_csv(file: UploadFile = File(...)):
 
 @app.post('/api/simulate', dependencies=[Depends(authorize)])
 def simulate(body: Scenario):
-    from .agents import Forecaster
     with connect() as db:
         rows = [dict(r) for r in db.execute('SELECT * FROM transactions')]
         balance = db.execute('SELECT balance FROM settings WHERE id=1').fetchone()[0]
-    forecast = Forecaster().run(rows, balance, date.today(), body.days)
-    if not forecast['available']:
-        raise HTTPException(422, forecast['reason'])
-    after = money(forecast['projected_balance'] - body.cost + body.monthly_saving * body.days / 30)
-    return {'baseline': forecast['projected_balance'], 'after_purchase': after,
-            'reserve': body.reserve, 'affordable_under_model': after >= body.reserve,
-            'assumptions': 'One-time purchase at horizon; savings accrue evenly. End balance only; payment timing is not modeled.',
-            'forecast': forecast}
+    try:
+        report = Coordinator().run(rows, balance, date.today(), scenario=body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {**report['simulation'], 'orchestration': report['orchestration'],
+            'execution_trace': report['execution_trace']}
 
 
 @app.post('/api/chat', dependencies=[Depends(authorize)])
 def chat(body: Question):
     try:
         report = dashboard()
-        answer = converse(body.question, report)
-        save_report({**report, 'question': body.question, 'answer': answer, 'provider': 'Mesh API'})
-        return {'answer': answer, 'provider': 'Mesh API'}
+        trace = []
+        answer = converse(body.question, report, lambda args: simulate(Scenario.model_validate(args)), trace, [m.model_dump() for m in body.history])
+        save_report({**report, 'question': body.question, 'answer': answer, 'provider': 'Mesh API', 'tool_trace': trace})
+        return {'answer': answer, 'provider': 'Mesh API', 'tool_trace': trace}
     except ValueError as exc:
         raise HTTPException(503, str(exc)) from exc
     except Exception as exc:
@@ -230,3 +243,93 @@ def demo():
         db.execute('UPDATE settings SET balance=45000 WHERE id=1')
     save_digest()
     return {'imported': len(rows)}
+
+
+@app.get('/api/subscriptions', dependencies=[Depends(authorize)])
+def get_subscriptions():
+    return dashboard()['subscriptions']
+
+
+@app.put('/api/subscriptions', dependencies=[Depends(authorize)])
+def put_subscription(body: planning.Subscription):
+    with connect() as db:
+        db.execute('INSERT INTO subscriptions VALUES(?,?) ON CONFLICT(merchant) DO UPDATE SET payload=excluded.payload', (body.merchant, body.model_dump_json()))
+    return {'saved':True}
+
+
+@app.get('/api/goals', dependencies=[Depends(authorize)])
+def get_goals():
+    return dashboard()['goals']
+
+
+@app.post('/api/goals', dependencies=[Depends(authorize)])
+def create_goal(body: planning.Goal):
+    if not 0 <= (body.deadline-date.today()).days <= 730:
+        raise HTTPException(422, 'Deadline must be within the next two years.')
+    with connect() as db:
+        result = db.execute('INSERT INTO goals(payload) VALUES(?)', (body.model_dump_json(),))
+        return {'id':result.lastrowid}
+
+
+@app.put('/api/goals/{goal_id}', dependencies=[Depends(authorize)])
+def update_goal(goal_id: int, body: planning.Goal):
+    if not 0 <= (body.deadline-date.today()).days <= 730:
+        raise HTTPException(422, 'Deadline must be within the next two years.')
+    with connect() as db:
+        if not db.execute('UPDATE goals SET payload=? WHERE id=?', (body.model_dump_json(),goal_id)).rowcount:
+            raise HTTPException(404,'Goal not found')
+    return {'saved':True}
+
+
+@app.delete('/api/goals/{goal_id}', dependencies=[Depends(authorize)])
+def delete_goal(goal_id: int):
+    with connect() as db:
+        if not db.execute('DELETE FROM goals WHERE id=?', (goal_id,)).rowcount:
+            raise HTTPException(404,'Goal not found')
+    return {'deleted':True}
+
+
+def deliver_daily(report):
+    day = datetime.now(timezone.utc).date().isoformat()
+    with connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        old = db.execute('SELECT * FROM deliveries WHERE day=?',(day,)).fetchone()
+        if old and (old['status'] in ('sent','sending','unknown') or old['attempts']>=3):
+            return {'status':old['status']}
+        if old: report=json.loads(old['payload'])
+        attempts = old['attempts']+1 if old else 1
+        db.execute('INSERT INTO deliveries VALUES(?,?,?,?) ON CONFLICT(day) DO UPDATE SET status=excluded.status,attempts=excluded.attempts', (day,'sending',attempts,json.dumps(report)))
+    try:
+        delivery.send(report)
+        status='sent'
+    except delivery.DeliveryUncertain:
+        status='unknown'
+    except Exception:
+        status='failed'
+    with connect() as db:
+        db.execute('UPDATE deliveries SET status=? WHERE day=?',(status,day))
+    return {'status':status}
+
+
+def scheduled_digest():
+    report=save_digest()
+    if delivery.configuration()['enabled']:
+        deliver_daily(report)
+
+
+@app.get('/api/delivery', dependencies=[Depends(authorize)])
+def delivery_status():
+    with connect() as db:
+        records=[dict(r) for r in db.execute('SELECT day,status,attempts FROM deliveries ORDER BY day DESC LIMIT 10')]
+    return {**delivery.configuration(), 'records':records, 'hour_utc':int(os.getenv('DIGEST_HOUR_UTC','3'))}
+
+
+@app.post('/api/digest/send', dependencies=[Depends(authorize)])
+def email_digest():
+    config=delivery.configuration()
+    if not config['enabled'] or not config['configured']:
+        raise HTTPException(409,'Configure and enable email locally first.')
+    result=deliver_daily(save_digest())
+    if result['status']!='sent':
+        raise HTTPException(502,'Delivery status: '+result['status']+'. Check delivery settings or mailbox before retrying.')
+    return result
