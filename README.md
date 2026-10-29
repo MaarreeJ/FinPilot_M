@@ -129,6 +129,18 @@ python -m pip check
 
 Reproducible seed: 20261018. Each forecast uses a 90-day training window and separate 30-day holdout. Prediction-level results are committed in `evaluation/results.json`. This is a small developer-authored synthetic evaluation, not independent real-world validation. Positive refunds are treated as income; unfamiliar merchants and unseen spending shifts are known weaknesses. Live LLM quality is not measured by these tests.
 
+### Live Mesh API Validation — 30 October 2026
+
+- All 42 automated tests passed.
+- Python dependency validation passed.
+- Synthetic financial evaluation completed.
+- Live AI inference through Mesh API successfully tested after adding credits.
+- Goa Trip test: ₹25,000 purchase with a ₹10,000 savings reserve.
+- AI decision: Affordable; projected post-purchase balance ₹34,024.40.
+- AI response included financial reasoning and forecasting assumptions.
+- Purchase Planner and AI forecasts differed slightly.
+- Real SMTP email delivery remains unverified.
+
 ## Challenge mapping
 
 | Requirement | Implementation |
